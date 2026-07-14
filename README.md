@@ -1,4 +1,6 @@
-# SoftEther VPN Client Manager for Linux
+# VPN Client Manager for working with SoftEther on Linux
+
+This was written 100% by ChatGPT.  Use at your own risk.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3](https://img.shields.io/badge/Python-3.x-blue.svg)](https://www.python.org/)
