@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=SoftEther VPN Client Manager
+Comment=Graphical manager for the SoftEther VPN Client on Linux
+Exec=/usr/local/bin/softether-gui
+Icon=softether-gui
+Terminal=false
+Categories=Network;System;
+StartupNotify=true
+Keywords=VPN;SoftEther;Network;

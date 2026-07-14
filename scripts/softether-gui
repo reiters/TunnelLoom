@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+APP_ROOT=/opt/softether-gui
+
+if [ ! -d "$APP_ROOT/softether_gui" ]; then
+    echo "SoftEther GUI is not installed correctly: $APP_ROOT/softether_gui is missing." >&2
+    exit 1
+fi
+
+# Python puts the process working directory ahead of PYTHONPATH for `-m`.
+# Without changing directory, running the installed launcher from an extracted
+# source tree can accidentally import that local copy instead of /opt. Always
+# anchor imports to the installed application and discard inherited Python
+# path overrides.
+unset PYTHONHOME
+export PYTHONPATH="$APP_ROOT"
+cd "$APP_ROOT"
+
+case "${1:-}" in
+    --version)
+        if [ -r "$APP_ROOT/VERSION" ]; then
+            cat "$APP_ROOT/VERSION"
+        else
+            echo "unknown"
+        fi
+        exit 0
+        ;;
+    --diagnose)
+        exec /usr/bin/python3 -P -m softether_gui.diagnostics
+        ;;
+    --probe-vpncmd)
+        exec /usr/bin/python3 -P -m softether_gui.probe
+        ;;
+esac
+
+exec /usr/bin/python3 -P -m softether_gui "$@"

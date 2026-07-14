@@ -1,0 +1,764 @@
+#!/usr/bin/python3
+"""Privileged broker for the SoftEther GUI.
+
+The desktop application starts this helper through pkexec.  It remains alive
+for the GUI session and accepts newline-delimited JSON requests on stdin.  This
+lets the GUI use root-owned SoftEther binaries without changing their owners,
+permissions, ACLs, or contents.
+"""
+from __future__ import annotations
+
+import ipaddress
+import json
+import os
+import pwd
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+INTERFACE_RE = re.compile(r"^vpn_[A-Za-z0-9_.-]+$")
+EXPORT_PATH_RE = re.compile(r'^\s*AccountExport\b.*?/SAVEPATH:"([^"]+)"', re.IGNORECASE)
+MAX_REQUEST_BYTES = 2 * 1024 * 1024
+NM_PROFILE_PREFIX = "softether-gui-vpn-"
+NETWORK_SESSIONS: dict[str, dict[str, str]] = {}
+ETC_RESOLV_CONF = Path("/etc/resolv.conf")
+NM_RESOLV_CONF = Path("/run/NetworkManager/resolv.conf")
+RESOLV_BACKUP = Path("/etc/resolv.conf.softether-gui-backup")
+
+
+def response(request_id: Any, returncode: int, output: str = "", stderr: str = "") -> dict[str, Any]:
+    return {
+        "id": request_id,
+        "returncode": int(returncode),
+        "output": output,
+        "stderr": stderr,
+    }
+
+
+def safe_text(value: Any, field: str, maximum: int = 4096) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be text.")
+    if "\x00" in value or "\r" in value or "\n" in value:
+        raise ValueError(f"{field} contains an invalid character.")
+    if len(value) > maximum:
+        raise ValueError(f"{field} is too long.")
+    return value
+
+
+def canonical_file(value: Any, expected_name: str) -> Path:
+    text = safe_text(value, expected_name)
+    path = Path(text).expanduser().resolve(strict=True)
+    if not path.is_file() or path.name != expected_name:
+        raise ValueError(f"The configured {expected_name} is invalid: {path}")
+    return path
+
+
+def canonical_directory(value: Any) -> Path:
+    text = safe_text(value, "SoftEther program directory")
+    path = Path(text).expanduser().resolve(strict=True)
+    if not path.is_dir():
+        raise ValueError(f"The SoftEther program directory is invalid: {path}")
+    return path
+
+
+def require_secure_root_path(path: Path) -> None:
+    info = path.stat()
+    if info.st_uid != 0:
+        raise PermissionError(f"Refusing to run an untrusted SoftEther path as root: {path} is not owned by root.")
+    if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise PermissionError(
+            f"Refusing to run an untrusted SoftEther path as root: {path} is group- or world-writable."
+        )
+
+
+def validate_softether(request: dict[str, Any], executable_name: str) -> tuple[Path, Path]:
+    program_dir = canonical_directory(request.get("softether_dir", ""))
+    executable = canonical_file(request.get(f"{executable_name}_path", ""), executable_name)
+    hamcore = (program_dir / "hamcore.se2").resolve(strict=True)
+
+    if executable.parent != program_dir:
+        raise ValueError(f"{executable_name} and hamcore.se2 must be in the same SoftEther directory.")
+    if not hamcore.is_file():
+        raise ValueError(f"hamcore.se2 was not found in {program_dir}.")
+
+    for path in (program_dir, executable, hamcore):
+        require_secure_root_path(path)
+    if not os.access(executable, os.X_OK):
+        raise PermissionError(f"{executable} is not executable by root.")
+    if not os.access(hamcore, os.R_OK):
+        raise PermissionError(f"{hamcore} is not readable by root.")
+    return program_dir, executable
+
+
+def clean_environment() -> dict[str, str]:
+    env = {
+        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "HOME": "/root",
+    }
+    for name in ("SYSTEMD_LOG_LEVEL",):
+        if name in os.environ:
+            env[name] = os.environ[name]
+    return env
+
+
+def command_timeout(request: dict[str, Any]) -> int:
+    raw = request.get("timeout", 45)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 45
+    return max(5, min(value, 300))
+
+
+def validated_commands(request: dict[str, Any]) -> list[str]:
+    commands = request.get("commands")
+    if not isinstance(commands, list) or not commands:
+        raise ValueError("At least one SoftEther command is required.")
+    result: list[str] = []
+    total = 0
+    for item in commands:
+        if not isinstance(item, str):
+            raise ValueError("SoftEther commands must be text.")
+        if "\x00" in item or "\r" in item or "\n" in item:
+            raise ValueError("A SoftEther command contains an invalid character.")
+        total += len(item)
+        if total > MAX_REQUEST_BYTES:
+            raise ValueError("The SoftEther command request is too large.")
+        result.append(item)
+    return result
+
+
+def caller_identity() -> tuple[int, int] | None:
+    raw = os.environ.get("PKEXEC_UID", "")
+    if not raw.isdigit():
+        return None
+    uid = int(raw)
+    try:
+        return uid, pwd.getpwuid(uid).pw_gid
+    except KeyError:
+        return None
+
+
+def return_exported_files_to_user(commands: list[str]) -> None:
+    identity = caller_identity()
+    if identity is None:
+        return
+    uid, gid = identity
+    for command in commands:
+        match = EXPORT_PATH_RE.search(command)
+        if not match:
+            continue
+        path = Path(match.group(1)).expanduser()
+        try:
+            if path.is_file() and path.stat().st_uid == 0:
+                os.chown(path, uid, gid)
+        except OSError:
+            pass
+
+
+def run_vpncmd_batch(request: dict[str, Any]) -> dict[str, Any]:
+    request_id = request.get("id")
+    program_dir, _ = validate_softether(request, "vpncmd")
+    host = safe_text(request.get("host", "localhost"), "management host", 255) or "localhost"
+    commands = validated_commands(request)
+
+    with tempfile.TemporaryDirectory(prefix="softether-gui-root-") as folder:
+        os.chmod(folder, 0o700)
+        infile = Path(folder) / "commands.txt"
+        outfile = Path(folder) / "output.txt"
+        infile.write_text("\n".join(commands) + "\n", encoding="utf-8")
+        infile.chmod(0o600)
+        argv = ["./vpncmd", host, "/CLIENT", f"/IN:{infile}", f"/OUT:{outfile}"]
+        completed = subprocess.run(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=program_dir,
+            env=clean_environment(),
+            timeout=command_timeout(request),
+            check=False,
+        )
+        output = outfile.read_text(encoding="utf-8", errors="replace") if outfile.exists() else ""
+        if not output:
+            output = completed.stdout.decode("utf-8", errors="replace")
+        stderr = completed.stderr.decode("utf-8", errors="replace")
+        return_exported_files_to_user(commands)
+        return response(request_id, completed.returncode, output, stderr)
+
+
+def run_vpncmd_interactive(request: dict[str, Any]) -> dict[str, Any]:
+    request_id = request.get("id")
+    program_dir, _ = validate_softether(request, "vpncmd")
+    host = safe_text(request.get("host", "localhost"), "management host", 255) or "localhost"
+    commands = validated_commands(request)
+    password = request.get("management_password", "")
+    if not isinstance(password, str) or "\x00" in password or "\r" in password or "\n" in password:
+        raise ValueError("The management password is invalid.")
+
+    payload = password + "\n" + "\n".join(commands) + "\nexit\n"
+    completed = subprocess.run(
+        ["./vpncmd", host, "/CLIENT"],
+        input=payload.encode("utf-8"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=program_dir,
+        env=clean_environment(),
+        timeout=command_timeout(request),
+        check=False,
+    )
+    output = completed.stdout.decode("utf-8", errors="replace")
+    stderr = completed.stderr.decode("utf-8", errors="replace")
+    return_exported_files_to_user(commands)
+    return response(request_id, completed.returncode, output, stderr)
+
+
+def run_client(request: dict[str, Any], operation: str) -> dict[str, Any]:
+    request_id = request.get("id")
+    program_dir, _ = validate_softether(request, "vpnclient")
+    completed = subprocess.run(
+        ["./vpnclient", operation],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=program_dir,
+        env=clean_environment(),
+        timeout=command_timeout(request),
+        check=False,
+    )
+    return response(
+        request_id,
+        completed.returncode,
+        completed.stdout.decode("utf-8", errors="replace"),
+        completed.stderr.decode("utf-8", errors="replace"),
+    )
+
+
+def run_process(argv: list[str], timeout: int = 30) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=clean_environment(),
+        timeout=timeout,
+        check=False,
+    )
+
+
+def nmcli_is_available() -> bool:
+    if not shutil.which("nmcli"):
+        return False
+    try:
+        result = run_process(["nmcli", "-t", "-f", "STATE", "general"], timeout=8)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def nm_profile_prefix(interface: str) -> str:
+    return f"{NM_PROFILE_PREFIX}{interface}-"
+
+
+def list_gui_nm_profiles(interface: str) -> list[tuple[str, str]]:
+    if not nmcli_is_available():
+        return []
+    result = run_process(["nmcli", "-t", "-f", "UUID,NAME", "connection", "show"], timeout=10)
+    if result.returncode != 0:
+        return []
+    profiles: list[tuple[str, str]] = []
+    prefix = nm_profile_prefix(interface)
+    for raw in result.stdout.decode("utf-8", errors="replace").splitlines():
+        if ":" not in raw:
+            continue
+        profile_uuid, name = raw.split(":", 1)
+        # Our generated names only use characters that nmcli does not escape.
+        if name.startswith(prefix) and re.fullmatch(r"[0-9A-Fa-f-]{36}", profile_uuid):
+            profiles.append((profile_uuid, name))
+    return profiles
+
+
+def remove_gui_nm_profiles(interface: str) -> list[str]:
+    messages: list[str] = []
+    session = NETWORK_SESSIONS.pop(interface, None)
+    profiles = list_gui_nm_profiles(interface)
+    if session and session.get("uuid") and all(item[0] != session["uuid"] for item in profiles):
+        profiles.insert(0, (session["uuid"], session.get("name", "")))
+    seen: set[str] = set()
+    for profile_uuid, name in profiles:
+        if profile_uuid in seen:
+            continue
+        seen.add(profile_uuid)
+        down = run_process(["nmcli", "--wait", "10", "connection", "down", "uuid", profile_uuid], timeout=15)
+        # A profile may already be inactive; deletion is the authoritative cleanup.
+        delete = run_process(["nmcli", "connection", "delete", "uuid", profile_uuid], timeout=15)
+        detail = delete.stderr.decode("utf-8", errors="replace").strip()
+        if delete.returncode == 0:
+            messages.append(f"Removed temporary NetworkManager profile {name or profile_uuid}.")
+        elif "unknown connection" not in detail.casefold():
+            messages.append(f"Could not remove temporary profile {name or profile_uuid}: {detail}")
+        del down
+    return messages
+
+
+def default_route_present() -> bool:
+    result = run_process(["ip", "-4", "route", "show", "default"], timeout=8)
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def resolver_nameservers(path: Path) -> list[str]:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    servers: list[str] = []
+    for raw in text.splitlines():
+        match = re.match(r"^\s*nameserver\s+(\S+)", raw, re.IGNORECASE)
+        if not match:
+            continue
+        value = match.group(1)
+        try:
+            ipaddress.ip_address(value.split("%", 1)[0])
+        except ValueError:
+            continue
+        if value not in servers:
+            servers.append(value)
+    return servers
+
+
+def backup_resolver_once() -> str:
+    if RESOLV_BACKUP.exists() or RESOLV_BACKUP.is_symlink():
+        return f"Existing resolver backup preserved at {RESOLV_BACKUP}."
+    try:
+        if ETC_RESOLV_CONF.is_symlink():
+            target = os.readlink(ETC_RESOLV_CONF)
+            RESOLV_BACKUP.write_text(f"# Original /etc/resolv.conf was a symlink to:\n{target}\n", encoding="utf-8")
+        elif ETC_RESOLV_CONF.exists():
+            shutil.copy2(ETC_RESOLV_CONF, RESOLV_BACKUP)
+        else:
+            RESOLV_BACKUP.write_text("# /etc/resolv.conf did not exist before repair.\n", encoding="utf-8")
+        return f"Backed up the previous resolver configuration to {RESOLV_BACKUP}."
+    except OSError as exc:
+        return f"Could not create resolver backup: {exc}"
+
+
+def point_resolver_to_networkmanager() -> list[str]:
+    """Repair an empty dhcpcd-owned resolver using NetworkManager's runtime file.
+
+    NetworkManager always maintains /run/NetworkManager/resolv.conf.  A prior
+    standalone dhcpcd lease can leave /etc/resolv.conf as an empty regular file,
+    after which `nmcli general reload dns-rc` may not make it usable.  We preserve
+    the old file once, then atomically point /etc/resolv.conf at NetworkManager's
+    own runtime resolver.
+    """
+    messages: list[str] = []
+    if resolver_nameservers(ETC_RESOLV_CONF):
+        return messages
+
+    runtime_servers = resolver_nameservers(NM_RESOLV_CONF)
+    if not runtime_servers:
+        messages.append(
+            "DNS is still unavailable: NetworkManager's runtime resolver contains no nameserver entries."
+        )
+        return messages
+
+    try:
+        if ETC_RESOLV_CONF.is_symlink() and ETC_RESOLV_CONF.resolve(strict=False) == NM_RESOLV_CONF:
+            messages.append("/etc/resolv.conf already points to NetworkManager, but DNS is still empty.")
+            return messages
+    except OSError:
+        pass
+
+    messages.append(backup_resolver_once())
+    temporary = ETC_RESOLV_CONF.with_name(".resolv.conf.softether-gui-new")
+    try:
+        if temporary.exists() or temporary.is_symlink():
+            temporary.unlink()
+        temporary.symlink_to(NM_RESOLV_CONF)
+        os.replace(temporary, ETC_RESOLV_CONF)
+        messages.append(
+            f"Repaired DNS by linking /etc/resolv.conf to {NM_RESOLV_CONF} "
+            f"({', '.join(runtime_servers)})."
+        )
+    except OSError as exc:
+        try:
+            if temporary.exists() or temporary.is_symlink():
+                temporary.unlink()
+        except OSError:
+            pass
+        messages.append(f"Could not repair /etc/resolv.conf: {exc}")
+    return messages
+
+
+def active_base_connections(excluded_interface: str = "") -> list[tuple[str, str, str]]:
+    if not nmcli_is_available():
+        return []
+    result = run_process(
+        ["nmcli", "-t", "-f", "UUID,TYPE,DEVICE", "connection", "show", "--active"],
+        timeout=10,
+    )
+    if result.returncode != 0:
+        return []
+    allowed = {
+        "802-3-ethernet", "ethernet", "802-11-wireless", "wifi", "gsm", "cdma", "pppoe",
+    }
+    found: list[tuple[str, str, str]] = []
+    for raw in result.stdout.decode("utf-8", errors="replace").splitlines():
+        parts = raw.split(":", 2)
+        if len(parts) != 3:
+            continue
+        profile_uuid, kind, device = parts
+        if not device or device == excluded_interface or device.startswith("vpn_"):
+            continue
+        if kind not in allowed or not re.fullmatch(r"[0-9A-Fa-f-]{36}", profile_uuid):
+            continue
+        found.append((profile_uuid, kind, device))
+    return found
+
+
+def refresh_normal_network(excluded_interface: str = "") -> list[str]:
+    messages: list[str] = []
+    if not nmcli_is_available():
+        return messages
+
+    bases = active_base_connections(excluded_interface)
+    for _profile_uuid, _kind, device in bases:
+        reapplied = run_process(["nmcli", "--wait", "10", "device", "reapply", device], timeout=15)
+        if reapplied.returncode == 0:
+            messages.append(f"Reapplied the active NetworkManager connection on {device}.")
+
+    if not default_route_present():
+        # Reapply should normally be enough. If the default route is still absent,
+        # explicitly reactivate the already-active base profile as a last resort.
+        for profile_uuid, _kind, device in bases:
+            up = run_process(
+                ["nmcli", "--wait", "25", "connection", "up", "uuid", profile_uuid, "ifname", device],
+                timeout=30,
+            )
+            if up.returncode == 0:
+                messages.append(f"Reactivated the normal NetworkManager connection on {device}.")
+                if default_route_present():
+                    break
+
+    dns = run_process(["nmcli", "general", "reload", "dns-rc"], timeout=15)
+    if dns.returncode == 0:
+        messages.append("Asked NetworkManager to rewrite normal DNS configuration.")
+    else:
+        detail = dns.stderr.decode("utf-8", errors="replace").strip()
+        messages.append(f"NetworkManager DNS refresh failed: {detail or 'unknown error'}")
+
+    # A legacy standalone dhcpcd lease may have left /etc/resolv.conf as an
+    # empty file even though NetworkManager still has valid DNS information.
+    messages.extend(point_resolver_to_networkmanager())
+    return messages
+
+
+def interface_ipv4_addresses(interface: str) -> list[str]:
+    result = run_process(
+        ["ip", "-4", "-o", "address", "show", "dev", interface, "scope", "global"],
+        timeout=8,
+    )
+    if result.returncode != 0:
+        return []
+    addresses: list[str] = []
+    for raw in result.stdout.decode("utf-8", errors="replace").splitlines():
+        match = re.search(r"\binet\s+(\S+)", raw)
+        if match:
+            addresses.append(match.group(1))
+    return addresses
+
+
+def start_dhcpcd_without_dns(interface: str, request: dict[str, Any]) -> dict[str, Any]:
+    """Acquire the VPN-side IPv4 lease without allowing dhcpcd to rewrite DNS.
+
+    SoftEther creates a TAP-like Linux interface which NetworkManager reports as
+    type ``tun``.  An Ethernet NetworkManager profile cannot activate on that
+    device, even though creating the profile may appear to succeed.  The user's
+    proven manual setup uses dhcpcd directly, so we preserve that behavior while
+    disabling only dhcpcd's resolv.conf hook.
+    """
+    request_id = request.get("id")
+    timeout = command_timeout(request)
+    messages = remove_gui_nm_profiles(interface) if nmcli_is_available() else []
+
+    # Clean up a stale per-interface dhcpcd instance left by a prior GUI or
+    # script.  Suppressing the resolver hook on release prevents the historical
+    # empty-/etc/resolv.conf failure.
+    run_process(["dhcpcd", "-4", "-C", "resolv.conf", "-k", interface], timeout=15)
+
+    argv = [
+        "dhcpcd", "-4", "-w", "-L", "-C", "resolv.conf",
+        "-t", str(timeout), interface,
+    ]
+    try:
+        completed = run_process(argv, timeout=timeout + 10)
+    except subprocess.TimeoutExpired:
+        run_process(["dhcpcd", "-4", "-C", "resolv.conf", "-k", interface], timeout=15)
+        return response(
+            request_id,
+            124,
+            "\n".join(messages),
+            f"Timed out waiting for an IPv4 DHCP lease on {interface}.",
+        )
+
+    output = completed.stdout.decode("utf-8", errors="replace").strip()
+    stderr = completed.stderr.decode("utf-8", errors="replace").strip()
+    addresses = interface_ipv4_addresses(interface)
+    if completed.returncode != 0 or not addresses:
+        run_process(["dhcpcd", "-4", "-C", "resolv.conf", "-k", interface], timeout=15)
+        if completed.returncode != 0:
+            detail = stderr or output or f"dhcpcd failed while configuring {interface}."
+        else:
+            detail = f"No IPv4 address was assigned to {interface}."
+            if output:
+                detail += f" dhcpcd output: {output}"
+        return response(request_id, completed.returncode or 2, "\n".join(messages), detail)
+
+    NETWORK_SESSIONS[interface] = {"backend": "dhcpcd-no-dns"}
+    messages.append(
+        f"Configured {interface} with dhcpcd without changing /etc/resolv.conf. "
+        f"IPv4 address: {', '.join(addresses)}."
+    )
+    if output:
+        messages.append(output)
+    return response(request_id, 0, "\n".join(messages), stderr)
+
+
+def run_dhcp(request: dict[str, Any], starting: bool) -> dict[str, Any]:
+    request_id = request.get("id")
+    interface = safe_text(request.get("interface", ""), "interface", 64)
+    if not INTERFACE_RE.fullmatch(interface):
+        raise ValueError(f"Invalid SoftEther interface name: {interface}")
+
+    if starting:
+        show = run_process(["ip", "link", "show", "dev", interface], timeout=8)
+        if show.returncode != 0:
+            return response(request_id, show.returncode, "", f"Interface {interface} does not exist.")
+        run_process(["ip", "link", "set", "dev", interface, "up"], timeout=8)
+
+        # The original working script used dhcpcd on vpn_<adapter>.  Keep that
+        # proven path, but disable the resolv.conf hook so disconnecting cannot
+        # erase the normal NetworkManager DNS configuration.
+        if shutil.which("dhcpcd"):
+            return start_dhcpcd_without_dns(interface, request)
+
+        return response(
+            request_id,
+            1,
+            "",
+            "dhcpcd is required to configure the SoftEther virtual adapter. "
+            "Install the dhcpcd-base package.",
+        )
+
+    messages: list[str] = []
+    if nmcli_is_available():
+        # Remove temporary profiles created by versions 0.1.11/0.1.12.
+        messages.extend(remove_gui_nm_profiles(interface))
+
+    # Release any per-interface dhcpcd instance, even after a GUI restart.  The
+    # -C resolv.conf option is critical: it prevents the release hook from
+    # replacing the normal resolver with an empty file.
+    if shutil.which("dhcpcd"):
+        released = run_process(
+            ["dhcpcd", "-4", "-C", "resolv.conf", "-k", interface],
+            timeout=15,
+        )
+        detail = released.stderr.decode("utf-8", errors="replace").strip()
+        if released.returncode == 0:
+            messages.append(f"Released the DHCP lease on {interface} without changing DNS.")
+        elif detail and "not running" not in detail.casefold():
+            messages.append(f"DHCP release reported: {detail}")
+
+    NETWORK_SESSIONS.pop(interface, None)
+    run_process(["ip", "address", "flush", "dev", interface], timeout=10)
+    run_process(["ip", "route", "flush", "dev", interface], timeout=10)
+    messages.extend(refresh_normal_network(interface))
+    route_state = "present" if default_route_present() else "MISSING"
+    resolver_state = "present" if resolver_nameservers(ETC_RESOLV_CONF) else "MISSING"
+    messages.append(f"Normal IPv4 default route after VPN cleanup: {route_state}.")
+    messages.append(f"Normal DNS resolver after VPN cleanup: {resolver_state}.")
+    ok = route_state == "present" and resolver_state == "present"
+    return response(request_id, 0 if ok else 2, "\n".join(messages), "")
+
+def existing_vpn_interfaces() -> list[str]:
+    result = run_process(["ip", "-o", "link", "show"], timeout=10)
+    if result.returncode != 0:
+        return []
+    found: list[str] = []
+    for raw in result.stdout.decode("utf-8", errors="replace").splitlines():
+        match = re.match(r"^\d+:\s+([^:@]+)(?:@[^:]+)?:", raw)
+        if not match:
+            continue
+        name = match.group(1)
+        if INTERFACE_RE.fullmatch(name):
+            found.append(name)
+    return found
+
+
+def stop_client_and_cleanup(request: dict[str, Any]) -> dict[str, Any]:
+    stopped = run_client(request, "stop")
+    messages = [stopped.get("output", "").strip()]
+    errors = [stopped.get("stderr", "").strip()]
+    cleanup_code = 0
+    for interface in existing_vpn_interfaces():
+        cleanup_request = dict(request)
+        cleanup_request["interface"] = interface
+        cleaned = run_dhcp(cleanup_request, False)
+        if cleaned.get("output"):
+            messages.append(str(cleaned["output"]).strip())
+        if cleaned.get("stderr"):
+            errors.append(str(cleaned["stderr"]).strip())
+        cleanup_code = max(cleanup_code, int(cleaned.get("returncode", 0)))
+    return response(
+        request.get("id"),
+        int(stopped.get("returncode", 1)) if int(stopped.get("returncode", 1)) != 0 else cleanup_code,
+        "\n".join(item for item in messages if item),
+        "\n".join(item for item in errors if item),
+    )
+
+
+def network_diagnostics(request: dict[str, Any]) -> dict[str, Any]:
+    request_id = request.get("id")
+    sections: list[str] = []
+    commands = [
+        ("IPv4 routes", ["ip", "-4", "route", "show", "table", "main"]),
+        ("IPv4 rules", ["ip", "-4", "rule", "show"]),
+        ("Interfaces", ["ip", "-brief", "address", "show"]),
+    ]
+    if shutil.which("nmcli"):
+        commands.extend(
+            [
+                ("NetworkManager devices", ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device", "status"]),
+                ("Active NetworkManager connections", ["nmcli", "-t", "-f", "UUID,TYPE,DEVICE,NAME", "connection", "show", "--active"]),
+            ]
+        )
+    for title, argv in commands:
+        result = run_process(argv, timeout=12)
+        text = result.stdout.decode("utf-8", errors="replace").strip()
+        error = result.stderr.decode("utf-8", errors="replace").strip()
+        sections.append(f"--- {title} ---\n{text or error or '(no output)'}")
+
+    for interface in existing_vpn_interfaces():
+        addresses = interface_ipv4_addresses(interface)
+        summary = (
+            f"IPv4 addresses: {', '.join(addresses)}"
+            if addresses
+            else "IPv4 addresses: NONE — the SoftEther session may be connected, but Linux cannot reach the VPN network."
+        )
+        if shutil.which("dhcpcd"):
+            lease = run_process(["dhcpcd", "-4", "-U", interface], timeout=10)
+            lease_text = lease.stdout.decode("utf-8", errors="replace").strip()
+            lease_error = lease.stderr.decode("utf-8", errors="replace").strip()
+            summary += f"\nDHCP lease:\n{lease_text or lease_error or '(no lease data)'}"
+        sections.append(f"--- VPN adapter {interface} ---\n{summary}")
+
+    for label, resolv in (("System resolver", ETC_RESOLV_CONF), ("NetworkManager runtime resolver", NM_RESOLV_CONF)):
+        try:
+            target = str(resolv.resolve(strict=False))
+            contents = resolv.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError as exc:
+            target = f"unavailable: {exc}"
+            contents = ""
+        servers = ", ".join(resolver_nameservers(resolv)) or "NONE"
+        sections.append(
+            f"--- {label} ---\n{resolv} -> {target}\nNameservers: {servers}\n{contents or '(empty)'}"
+        )
+    return response(request_id, 0, "\n\n".join(sections), "")
+
+
+def repair_network(request: dict[str, Any]) -> dict[str, Any]:
+    request_id = request.get("id")
+    messages: list[str] = []
+    if nmcli_is_available():
+        # Remove only profiles created by this application. Do not touch user profiles.
+        for interface in list(NETWORK_SESSIONS):
+            messages.extend(remove_gui_nm_profiles(interface))
+        messages.extend(refresh_normal_network())
+    else:
+        messages.append("NetworkManager is not available; no managed connection could be reapplied.")
+    route_state = "present" if default_route_present() else "MISSING"
+    resolver_state = "present" if resolver_nameservers(ETC_RESOLV_CONF) else "MISSING"
+    messages.append(f"Normal IPv4 default route: {route_state}.")
+    messages.append(f"Normal DNS resolver: {resolver_state}.")
+    ok = route_state == "present" and resolver_state == "present"
+    return response(request_id, 0 if ok else 2, "\n".join(messages), "")
+
+
+def handle(request: dict[str, Any]) -> dict[str, Any]:
+    action = request.get("action")
+    if action == "authorize":
+        # Reaching this process already proves that PolicyKit authorized the
+        # root helper. Keep the helper alive for the remainder of the GUI run.
+        return response(request.get("id"), 0, "authorized", "")
+    if action == "vpncmd-batch":
+        return run_vpncmd_batch(request)
+    if action == "vpncmd-interactive":
+        return run_vpncmd_interactive(request)
+    if action == "start-client":
+        return run_client(request, "start")
+    if action == "stop-client":
+        return stop_client_and_cleanup(request)
+    if action == "status-client":
+        return run_client(request, "status")
+    if action == "dhcp-start":
+        return run_dhcp(request, True)
+    if action == "dhcp-stop":
+        return run_dhcp(request, False)
+    if action == "network-diagnostics":
+        return network_diagnostics(request)
+    if action == "network-repair":
+        return repair_network(request)
+    raise ValueError(f"Unknown helper action: {action}")
+
+
+def session() -> int:
+    if os.geteuid() != 0:
+        print("This helper must be started through pkexec.", file=sys.stderr)
+        return 126
+
+    for raw_line in sys.stdin.buffer:
+        request: dict[str, Any] | None = None
+        if len(raw_line) > MAX_REQUEST_BYTES:
+            result = response(None, 1, "", "The privileged-helper request is too large.")
+        else:
+            try:
+                request = json.loads(raw_line.decode("utf-8"))
+                if not isinstance(request, dict):
+                    raise ValueError("The privileged-helper request must be an object.")
+                if request.get("action") == "quit":
+                    result = response(request.get("id"), 0, "bye", "")
+                    print(json.dumps(result, separators=(",", ":")), flush=True)
+                    return 0
+                result = handle(request)
+            except subprocess.TimeoutExpired as exc:
+                result = response(
+                    request.get("id") if isinstance(request, dict) else None,
+                    124,
+                    "",
+                    f"The privileged SoftEther command timed out after {exc.timeout} seconds.",
+                )
+            except Exception as exc:  # Keep the broker alive and return a useful GUI error.
+                result = response(
+                    request.get("id") if isinstance(request, dict) else None,
+                    1,
+                    "",
+                    str(exc),
+                )
+        print(json.dumps(result, separators=(",", ":")), flush=True)
+    return 0
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or sys.argv[1] != "session":
+        print("Usage: softether-gui-helper session", file=sys.stderr)
+        return 2
+    return session()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
