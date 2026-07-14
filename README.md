@@ -1,7 +1,19 @@
-# SoftEther VPN Client Manager for Linux
-
+# VPN Client Manager for working with SoftEther on Linux
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3](https://img.shields.io/badge/Python-3.x-blue.svg)](https://www.python.org/)
+
+This was written 100% using ChatGPT.  I have no idea what I am doing.  I was tired of using the CLI to connect to the work VPN.  This tampers with network routing.  Works for me but could trash your network.  Use at your own risk!
+
+Send me an email if this helped you out tunnelloom@gmail.com
+
+## Trademark notice
+
+TunnelLoom is an independent, unofficial project and is not affiliated with,
+endorsed by, or sponsored by the SoftEther VPN Project, SoftEther Corporation,
+or the University of Tsukuba.
+
+SoftEther and SoftEther VPN are trademarks or product names of their respective
+owners. Their names are used only to describe compatibility with this software.
 
 An unofficial graphical manager for the **SoftEther VPN Client on Linux**. It is designed to provide a workflow similar to the Windows SoftEther VPN Client Manager without requiring users to operate `vpncmd` directly.
 
