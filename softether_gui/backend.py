@@ -20,6 +20,10 @@ from .parser import (
 from .types import AccountProfile, AppConfig, CommandResult, VirtualNic, VpnAccount
 
 
+INTERFACE_NAME_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
+IPV4_ADDRESS_RE = re.compile(r"\binet\s+([0-9]+(?:\.[0-9]+){3})/\d+\b")
+
+
 class VpncmdError(RuntimeError):
     def __init__(self, message: str, result: CommandResult | None = None):
         super().__init__(message)
@@ -303,7 +307,46 @@ class SoftEtherBackend:
         # Always query the running SoftEther client. The GUI does not maintain
         # its own shadow list of accounts, so connections created with vpncmd or
         # another manager appear automatically.
-        return parse_account_list(self.run(["AccountList"]).output)
+        accounts = parse_account_list(self.run(["AccountList"]).output)
+        address_cache: dict[str, str] = {}
+        for account in accounts:
+            if not account.is_connected or not account.nic:
+                continue
+            interface = f"vpn_{account.nic}"
+            if interface not in address_cache:
+                address_cache[interface] = self.interface_ipv4_address(interface)
+            account.vpn_ip = address_cache[interface]
+        return accounts
+
+    def interface_ipv4_address(self, interface: str) -> str:
+        """Return the first global IPv4 address assigned to an interface.
+
+        Reading interface addresses does not require administrator privileges,
+        so this deliberately runs outside the PolicyKit helper. A missing
+        interface or an address that has not yet been assigned is represented
+        by an empty string rather than an error.
+        """
+        if not INTERFACE_NAME_RE.fullmatch(interface):
+            return ""
+        ip_binary = shutil.which("ip") or "/usr/sbin/ip"
+        try:
+            completed = subprocess.run(
+                [ip_binary, "-4", "-o", "address", "show", "dev", interface, "scope", "global"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=5,
+                check=False,
+                env=self._environment(),
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        if completed.returncode != 0:
+            return ""
+        match = IPV4_ADDRESS_RE.search(completed.stdout)
+        return match.group(1) if match else ""
 
     def list_nics(self) -> list[VirtualNic]:
         # As with accounts, virtual adapters are discovered from SoftEther on
@@ -419,7 +462,7 @@ class SoftEtherBackend:
         deadline = started + seconds
         last_error: VpncmdError | None = None
         last_state: tuple[list[VpnAccount], list[VirtualNic]] | None = None
-        last_signature: tuple[tuple[tuple[str, str, str, str, str], ...], tuple[tuple[str, str, str, str], ...]] | None = None
+        last_signature: tuple[tuple[tuple[str, str, str, str, str, str], ...], tuple[tuple[str, str, str, str], ...]] | None = None
         stable_snapshots = 0
 
         while True:
@@ -431,7 +474,7 @@ class SoftEtherBackend:
                 account_names = frozenset(item.name for item in accounts)
                 nic_names = frozenset(item.name for item in nics)
                 signature = (
-                    tuple((item.name, item.status, item.server, item.hub, item.nic) for item in accounts),
+                    tuple((item.name, item.status, item.vpn_ip, item.server, item.hub, item.nic) for item in accounts),
                     tuple((item.name, item.status, item.mac, item.version) for item in nics),
                 )
                 if signature == last_signature:

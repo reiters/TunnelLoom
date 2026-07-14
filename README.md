@@ -1,27 +1,15 @@
-# VPN Client Manager for working with SoftEther on Linux
+# SoftEther VPN Client Manager for Linux
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3](https://img.shields.io/badge/Python-3.x-blue.svg)](https://www.python.org/)
 
-This was written 100% using ChatGPT.  I have no idea what I am doing.  I was tired of using the CLI to connect to the work VPN.  This tampers with network routing.  Works for me but could trash your network.  Use at your own risk!
-
-Send me an email if this helped you out tunnelloom@gmail.com
-
-## Trademark notice
-
-TunnelLoom is an independent, unofficial project and is not affiliated with,
-endorsed by, or sponsored by the SoftEther VPN Project, SoftEther Corporation,
-or the University of Tsukuba.
-
-SoftEther and SoftEther VPN are trademarks or product names of their respective
-owners. Their names are used only to describe compatibility with this software.
-
 An unofficial graphical manager for the **SoftEther VPN Client on Linux**. It is designed to provide a workflow similar to the Windows SoftEther VPN Client Manager without requiring users to operate `vpncmd` directly.
 
-![SoftEther VPN Client Manager main window](docs/main_screen.png)
+![SoftEther VPN Client Manager main window](docs/softether-vpn-client-manager.png)
 
 ## Project status
 
-Current version: **0.1.18**
+Current version: **0.1.19**
 
 The application was developed and tested on **LMDE 7 / Debian 13 with Cinnamon**. The application code is mostly distribution-independent, but the included installer currently uses `apt` and Debian package names. Other Linux distributions are welcome to adapt the installer and submit improvements.
 
@@ -29,7 +17,8 @@ This project is independent of the SoftEther Project. SoftEther VPN is not bundl
 
 ## Features
 
-- Displays existing SoftEther connection accounts and virtual adapters
+- Displays existing SoftEther connection accounts, their assigned VPN IPv4 addresses, and virtual adapters
+- Copies a connected VPN IPv4 address to the clipboard when its table cell is clicked
 - Creates, edits, deletes, imports, and exports connection settings
 - Connects and disconnects VPN accounts
 - Creates, enables, disables, deletes, and configures virtual adapters

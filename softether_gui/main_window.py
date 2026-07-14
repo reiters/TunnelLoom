@@ -49,6 +49,8 @@ class TaskContext:
 
 
 class MainWindow(QMainWindow):
+    VPN_IP_COLUMN = 2
+
     def __init__(self, config: AppConfig, icon: QIcon, backend: SoftEtherBackend | None = None):
         super().__init__()
         self.config = config
@@ -68,7 +70,7 @@ class MainWindow(QMainWindow):
         self._service_running: bool | None = None
         self.setWindowTitle("SoftEther VPN Client Manager")
         self.setWindowIcon(icon)
-        self.resize(940, 600)
+        self.resize(1080, 600)
         self._create_actions()
         self._create_menus()
         self._create_toolbar()
@@ -190,9 +192,16 @@ class MainWindow(QMainWindow):
         self.addToolBar(toolbar)
 
     def _create_tables(self) -> None:
-        self.account_table = QTableWidget(0, 5)
+        self.account_table = QTableWidget(0, 6)
         self.account_table.setHorizontalHeaderLabels(
-            ["VPN Connection Setting Name", "Status", "VPN Server Hostname", "Virtual Hub", "Virtual Network Adapter"]
+            [
+                "VPN Connection Setting Name",
+                "Status",
+                "VPN IP Address",
+                "VPN Server Hostname",
+                "Virtual Hub",
+                "Virtual Network Adapter",
+            ]
         )
         self.account_table.verticalHeader().hide()
         self.account_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -200,6 +209,7 @@ class MainWindow(QMainWindow):
         self.account_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.account_table.horizontalHeader().setStretchLastSection(True)
         self.account_table.itemSelectionChanged.connect(self._update_actions)
+        self.account_table.itemClicked.connect(self._account_cell_clicked)
         self.account_table.itemDoubleClicked.connect(lambda _item: self._account_double_click())
         self.account_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.account_table.customContextMenuRequested.connect(self._account_context_menu)
@@ -467,10 +477,19 @@ class MainWindow(QMainWindow):
         self._last_known_nic_names = frozenset(item.name for item in nics)
         self.account_table.setRowCount(len(accounts))
         for row, account in enumerate(accounts):
-            values = (account.name, account.status, account.server, account.hub, account.nic)
+            values = (
+                account.name,
+                account.status,
+                account.vpn_ip or "—",
+                account.server,
+                account.hub,
+                account.nic,
+            )
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.UserRole, account.name)
+                if col == self.VPN_IP_COLUMN and account.vpn_ip:
+                    item.setToolTip("Click to copy this VPN IP address")
                 self.account_table.setItem(row, col, item)
             if account.name == selected_account:
                 self.account_table.selectRow(row)
@@ -489,6 +508,16 @@ class MainWindow(QMainWindow):
         self._update_actions()
         connected = sum(1 for item in accounts if item.is_connected)
         self.statusBar().showMessage(f"{len(accounts)} connection settings, {connected} connected, {len(nics)} virtual adapters", 5000)
+
+    @Slot(object)
+    def _account_cell_clicked(self, item: QTableWidgetItem) -> None:
+        if item.column() != self.VPN_IP_COLUMN:
+            return
+        address = item.text().strip()
+        if not address or address == "—":
+            return
+        QApplication.clipboard().setText(address)
+        self.statusBar().showMessage(f"Copied VPN IP address {address} to the clipboard", 4000)
 
     def selected_account(self) -> VpnAccount | None:
         row = self.account_table.currentRow()

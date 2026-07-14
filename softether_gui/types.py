@@ -23,6 +23,7 @@ class VpnAccount:
     server: str = ""
     hub: str = ""
     nic: str = ""
+    vpn_ip: str = ""
 
     @property
     def is_connected(self) -> bool:

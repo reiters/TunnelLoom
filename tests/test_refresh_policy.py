@@ -56,3 +56,11 @@ def test_refresh_uses_stable_snapshot_and_retains_unexpected_empty_lists():
 def test_known_delete_operations_allow_empty_refresh_results():
     source = (Path(__file__).resolve().parents[1] / "softether_gui" / "main_window.py").read_text(encoding="utf-8")
     assert source.count("refresh_allowing_empty") >= 3
+
+
+def test_connection_table_shows_and_copies_vpn_ip_address():
+    source = (Path(__file__).resolve().parents[1] / "softether_gui" / "main_window.py").read_text(encoding="utf-8")
+    assert '"VPN IP Address"' in source
+    assert "account.vpn_ip or \"—\"" in source
+    assert "QApplication.clipboard().setText(address)" in source
+    assert "Click to copy this VPN IP address" in source

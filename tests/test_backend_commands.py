@@ -111,3 +111,68 @@ def test_stable_refresh_waits_for_expected_visible_state_without_status_prefligh
     assert captured["expected_accounts"] == accounts
     assert captured["expected_nics"] == nics
     assert captured["settle_seconds"] == 4.0
+
+
+def test_interface_ipv4_address_reads_first_global_address(monkeypatch) -> None:
+    import subprocess
+
+    backend = SoftEtherBackend(AppConfig())
+
+    class Completed:
+        returncode = 0
+        stdout = "12: vpn_worknic    inet 172.30.14.20/20 brd 172.30.15.255 scope global vpn_worknic\\n"
+
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+        return Completed()
+
+    monkeypatch.setattr("softether_gui.backend.shutil.which", lambda name: "/usr/sbin/ip" if name == "ip" else None)
+    monkeypatch.setattr("softether_gui.backend.subprocess.run", fake_run)
+
+    assert backend.interface_ipv4_address("vpn_worknic") == "172.30.14.20"
+    assert captured["argv"] == [
+        "/usr/sbin/ip",
+        "-4",
+        "-o",
+        "address",
+        "show",
+        "dev",
+        "vpn_worknic",
+        "scope",
+        "global",
+    ]
+    assert captured["kwargs"]["check"] is False
+
+
+def test_list_accounts_adds_ip_only_to_connected_accounts(monkeypatch) -> None:
+    output = """
+VPN Connection Setting Name |workaccount
+Status                      |Connected
+VPN Server Hostname         |vpn.example.com:443 (Direct TCP/IP Connection)
+Virtual Hub                 |DEFAULT
+Virtual Network Adapter Name|worknic
+----------------------------+------------------------------------------------------------
+VPN Connection Setting Name |backup
+Status                      |Offline
+VPN Server Hostname         |backup.example.com:443 (Direct TCP/IP Connection)
+Virtual Hub                 |DEFAULT
+Virtual Network Adapter Name|backupnic
+The command completed successfully.
+"""
+    backend = SoftEtherBackend(AppConfig())
+    monkeypatch.setattr(backend, "run", lambda _commands: CommandResult(0, output, ""))
+    calls = []
+    monkeypatch.setattr(
+        backend,
+        "interface_ipv4_address",
+        lambda interface: calls.append(interface) or "172.30.14.20",
+    )
+
+    accounts = backend.list_accounts()
+
+    assert accounts[0].vpn_ip == "172.30.14.20"
+    assert accounts[1].vpn_ip == ""
+    assert calls == ["vpn_worknic"]
