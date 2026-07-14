@@ -1,4 +1,4 @@
-# VPN Client Manager for working with SoftEther on Linux
+# TunnelLoom VPN Client Manager for working with SoftEther on Linux
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3](https://img.shields.io/badge/Python-3.x-blue.svg)](https://www.python.org/)
 
@@ -17,7 +17,7 @@ owners. Their names are used only to describe compatibility with this software.
 
 An unofficial graphical manager for the **SoftEther VPN Client on Linux**. It is designed to provide a workflow similar to the Windows SoftEther VPN Client Manager without requiring users to operate `vpncmd` directly.
 
-![SoftEther VPN Client Manager main window](docs/softether-vpn-client-manager.png)
+![TunnelLoom VPN Client Manager main window](docs/softether-vpn-client-manager.png)
 
 ## Project status
 
@@ -93,7 +93,7 @@ Reports and installer contributions for other distributions are welcome.
 Download or clone the repository, then run the installer as your normal desktop user:
 
 ```bash
-cd softether-gui-lmde7
+cd tunnelloom-gui-lmde7
 ./scripts/install.sh
 ```
 
@@ -117,7 +117,7 @@ iproute2
 It then installs the application under:
 
 ```text
-/opt/softether-gui
+/opt/tunnelloom-gui
 ```
 
 and creates the launcher:

@@ -10,7 +10,8 @@ from typing import Iterable
 from .types import AppConfig
 
 
-APP_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "softether-gui"
+APP_DIR = Path(os.environ.get("XDG_CONFIG_HOME",
+               Path.home() / ".config")) / "tunnelloom-gui"
 CONFIG_FILE = APP_DIR / "config.json"
 
 _ENV_SOFTETHER_DIR = os.environ.get("SOFTETHER_GUI_SOFTETHER_DIR", "")
@@ -21,11 +22,11 @@ COMMON_SOFTETHER_DIRS = tuple(
         "/usr/local/vpnclient",
         "/usr/vpnclient",
         "/opt/vpnclient",
-        "/opt/softether-vpnclient",
-        "/usr/lib/softether",
-        "/usr/libexec/softether/vpnclient",
+        "/opt/tunnelloom-vpnclient",
+        "/usr/lib/tunnelloom",
+        "/usr/libexec/tunnelloom/vpnclient",
         str(Path.home() / "vpnclient"),
-        str(Path.home() / "softether-vpnclient"),
+        str(Path.home() / "tunnelloom-vpnclient"),
     )
     if item
 )
@@ -59,7 +60,8 @@ def _executable_directories(executable: str) -> list[str]:
     if not executable:
         return []
     expanded = os.path.expanduser(executable)
-    resolved = shutil.which(expanded) if not os.path.isabs(expanded) else expanded
+    resolved = shutil.which(expanded) if not os.path.isabs(
+        expanded) else expanded
     if not resolved:
         return []
 
@@ -149,8 +151,10 @@ def detect_softether_dir(
 def detect_vpncmd(softether_dir: str = "") -> str:
     candidates: list[str] = []
     if softether_dir:
-        candidates.append(str(Path(os.path.expanduser(softether_dir)) / "vpncmd"))
-    candidates.extend(str(Path(item) / "vpncmd") for item in COMMON_SOFTETHER_DIRS)
+        candidates.append(
+            str(Path(os.path.expanduser(softether_dir)) / "vpncmd"))
+    candidates.extend(str(Path(item) / "vpncmd")
+                      for item in COMMON_SOFTETHER_DIRS)
     candidates.append("vpncmd")
     return _first_program_file(candidates)
 
@@ -158,8 +162,10 @@ def detect_vpncmd(softether_dir: str = "") -> str:
 def detect_vpnclient(softether_dir: str = "") -> str:
     candidates: list[str] = []
     if softether_dir:
-        candidates.append(str(Path(os.path.expanduser(softether_dir)) / "vpnclient"))
-    candidates.extend(str(Path(item) / "vpnclient") for item in COMMON_SOFTETHER_DIRS)
+        candidates.append(
+            str(Path(os.path.expanduser(softether_dir)) / "vpnclient"))
+    candidates.extend(str(Path(item) / "vpnclient")
+                      for item in COMMON_SOFTETHER_DIRS)
     candidates.append("vpnclient")
     return _first_program_file(candidates)
 
@@ -224,6 +230,7 @@ def load_config() -> AppConfig:
 def save_config(config: AppConfig) -> None:
     APP_DIR.mkdir(parents=True, exist_ok=True)
     temp = CONFIG_FILE.with_suffix(".tmp")
-    temp.write_text(json.dumps(asdict(config), indent=2, sort_keys=True), encoding="utf-8")
+    temp.write_text(json.dumps(asdict(config), indent=2,
+                    sort_keys=True), encoding="utf-8")
     os.chmod(temp, 0o600)
     temp.replace(CONFIG_FILE)

@@ -39,9 +39,11 @@ def quote(value: str) -> str:
         return '""'
     value = str(value)
     if "\n" in value or "\r" in value or "\x00" in value:
-        raise ValueError("SoftEther values may not contain newlines or NUL characters.")
+        raise ValueError(
+            "SoftEther values may not contain newlines or NUL characters.")
     if '"' in value:
-        raise ValueError('Double quotes are not supported in SoftEther command values.')
+        raise ValueError(
+            'Double quotes are not supported in SoftEther command values.')
     return '"' + value + '"'
 
 
@@ -86,7 +88,8 @@ class SoftEtherBackend:
                 pass
 
         directory = self.softether_dir
-        path = os.path.abspath(os.path.expanduser(self.vpncmd_path)) if self.vpncmd_path else ""
+        path = os.path.abspath(os.path.expanduser(
+            self.vpncmd_path)) if self.vpncmd_path else ""
         if not directory:
             raise VpncmdError(
                 "The SoftEther program directory is not configured. Open Edit > Preferences and "
@@ -97,7 +100,8 @@ class SoftEtherBackend:
                 "vpncmd is not configured. Open Edit > Preferences and select the vpncmd executable."
             )
         if os.path.basename(path) != "vpncmd":
-            raise VpncmdError(f'The configured vpncmd must be named "vpncmd": {path}')
+            raise VpncmdError(
+                f'The configured vpncmd must be named "vpncmd": {path}')
         expected = os.path.join(directory, "vpncmd")
         if os.path.normpath(path) != os.path.normpath(expected):
             raise VpncmdError(
@@ -114,9 +118,11 @@ class SoftEtherBackend:
         administrator-password dialog appears first rather than popping up
         over an already visible, empty manager window.
         """
-        result = self._privileged_request({"action": "authorize"}, timeout, ("authorize",))
+        result = self._privileged_request(
+            {"action": "authorize"}, timeout, ("authorize",))
         if not result.ok:
-            raise VpncmdError(result.stderr or result.output or "Administrator authorization failed.", result)
+            raise VpncmdError(
+                result.stderr or result.output or "Administrator authorization failed.", result)
 
     def run(self, commands: list[str], timeout: int = 45, secrets: tuple[str, ...] = ()) -> CommandResult:
         self.validate()
@@ -128,9 +134,11 @@ class SoftEtherBackend:
         lower = (result.output + result.stderr).casefold()
         password_prompt = "password:" in lower and "command completed successfully" not in lower
         if password_prompt or (not result.ok and "password" in lower and ("vpn client" in lower or "authentication" in lower)):
-            raise ClientPasswordRequired("The local VPN Client service requires its management password.", result)
+            raise ClientPasswordRequired(
+                "The local VPN Client service requires its management password.", result)
         if not result.ok:
-            raise VpncmdError(error_message(result.output + "\n" + result.stderr), result)
+            raise VpncmdError(error_message(
+                result.output + "\n" + result.stderr), result)
         return result
 
     def _environment(self) -> dict[str, str]:
@@ -140,9 +148,11 @@ class SoftEtherBackend:
         return env
 
     def _helper_path(self) -> str:
-        helper = shutil.which("softether-gui-helper") or "/usr/libexec/softether-gui-helper"
+        helper = shutil.which(
+            "tunnelloom-gui-helper") or "/usr/libexec/tunnelloom-gui-helper"
         if not os.path.isfile(helper):
-            raise VpncmdError("The PolicyKit helper is not installed. Run scripts/install.sh again.")
+            raise VpncmdError(
+                "The PolicyKit helper is not installed. Run scripts/install.sh again.")
         return helper
 
     def _start_helper_session(self) -> subprocess.Popen[str]:
@@ -152,7 +162,8 @@ class SoftEtherBackend:
 
         pkexec = shutil.which("pkexec")
         if not pkexec:
-            raise VpncmdError("pkexec is not installed. Install the pkexec package (polkitd is also required).")
+            raise VpncmdError(
+                "pkexec is not installed. Install the pkexec package (polkitd is also required).")
 
         # pkexec asks for the administrator password through the desktop's
         # PolicyKit agent.  The helper then remains alive for this GUI session,
@@ -192,7 +203,8 @@ class SoftEtherBackend:
             if process.poll() is None and process.stdin and process.stdout:
                 try:
                     self._helper_request_id += 1
-                    process.stdin.write(json.dumps({"id": self._helper_request_id, "action": "quit"}) + "\n")
+                    process.stdin.write(json.dumps(
+                        {"id": self._helper_request_id, "action": "quit"}) + "\n")
                     process.stdin.flush()
                 except (BrokenPipeError, OSError):
                     pass
@@ -208,7 +220,8 @@ class SoftEtherBackend:
             process = self._start_helper_session()
             if process.stdin is None or process.stdout is None:
                 self._discard_helper_session()
-                raise VpncmdError("The PolicyKit helper could not open its communication pipes.")
+                raise VpncmdError(
+                    "The PolicyKit helper could not open its communication pipes.")
 
             self._helper_request_id += 1
             request_id = self._helper_request_id
@@ -216,7 +229,8 @@ class SoftEtherBackend:
             request["id"] = request_id
             request["timeout"] = timeout
             try:
-                process.stdin.write(json.dumps(request, separators=(",", ":")) + "\n")
+                process.stdin.write(json.dumps(
+                    request, separators=(",", ":")) + "\n")
                 process.stdin.flush()
             except (BrokenPipeError, OSError) as exc:
                 self._discard_helper_session()
@@ -232,7 +246,8 @@ class SoftEtherBackend:
                 selector.close()
             if not ready:
                 self._discard_helper_session()
-                raise VpncmdError("Timed out waiting for administrator authorization or the SoftEther command.")
+                raise VpncmdError(
+                    "Timed out waiting for administrator authorization or the SoftEther command.")
 
             line = process.stdout.readline()
             if not line:
@@ -247,10 +262,12 @@ class SoftEtherBackend:
                 reply = json.loads(line)
             except json.JSONDecodeError as exc:
                 self._discard_helper_session()
-                raise VpncmdError(f"The privileged helper returned an invalid response: {line.strip()}") from exc
+                raise VpncmdError(
+                    f"The privileged helper returned an invalid response: {line.strip()}") from exc
             if not isinstance(reply, dict) or reply.get("id") != request_id:
                 self._discard_helper_session()
-                raise VpncmdError("The privileged helper returned a mismatched response.")
+                raise VpncmdError(
+                    "The privileged helper returned a mismatched response.")
 
             return CommandResult(
                 int(reply.get("returncode", 1)),
@@ -286,12 +303,14 @@ class SoftEtherBackend:
         output, stderr = self._redact(
             result.output, result.stderr, secrets + (self.management_password,)
         )
-        result = CommandResult(result.returncode, output, stderr, result.commands)
+        result = CommandResult(result.returncode, output,
+                               stderr, result.commands)
         if not result.ok:
             combined = (output + "\n" + stderr).casefold()
             if "password" in combined or "authentication" in combined:
                 self.management_password = ""
-                raise ClientPasswordRequired("The VPN Client management password was rejected.", result)
+                raise ClientPasswordRequired(
+                    "The VPN Client management password was rejected.", result)
             raise VpncmdError(error_message(output + "\n" + stderr), result)
         return result
 
@@ -314,7 +333,8 @@ class SoftEtherBackend:
                 continue
             interface = f"vpn_{account.nic}"
             if interface not in address_cache:
-                address_cache[interface] = self.interface_ipv4_address(interface)
+                address_cache[interface] = self.interface_ipv4_address(
+                    interface)
             account.vpn_ip = address_cache[interface]
         return accounts
 
@@ -331,7 +351,8 @@ class SoftEtherBackend:
         ip_binary = shutil.which("ip") or "/usr/sbin/ip"
         try:
             completed = subprocess.run(
-                [ip_binary, "-4", "-o", "address", "show", "dev", interface, "scope", "global"],
+                [ip_binary, "-4", "-o", "address", "show",
+                    "dev", interface, "scope", "global"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 text=True,
@@ -462,7 +483,8 @@ class SoftEtherBackend:
         deadline = started + seconds
         last_error: VpncmdError | None = None
         last_state: tuple[list[VpnAccount], list[VirtualNic]] | None = None
-        last_signature: tuple[tuple[tuple[str, str, str, str, str, str], ...], tuple[tuple[str, str, str, str], ...]] | None = None
+        last_signature: tuple[tuple[tuple[str, str, str, str, str, str], ...],
+                              tuple[tuple[str, str, str, str], ...]] | None = None
         stable_snapshots = 0
 
         while True:
@@ -474,8 +496,10 @@ class SoftEtherBackend:
                 account_names = frozenset(item.name for item in accounts)
                 nic_names = frozenset(item.name for item in nics)
                 signature = (
-                    tuple((item.name, item.status, item.vpn_ip, item.server, item.hub, item.nic) for item in accounts),
-                    tuple((item.name, item.status, item.mac, item.version) for item in nics),
+                    tuple((item.name, item.status, item.vpn_ip, item.server,
+                          item.hub, item.nic) for item in accounts),
+                    tuple((item.name, item.status, item.mac, item.version)
+                          for item in nics),
                 )
                 if signature == last_signature:
                     stable_snapshots += 1
@@ -572,7 +596,8 @@ class SoftEtherBackend:
         save_config(self.config)
 
     def update_account(self, original_name: str, profile: AccountProfile) -> None:
-        commands, secrets = self._profile_commands(profile, creating=False, original_name=original_name)
+        commands, secrets = self._profile_commands(
+            profile, creating=False, original_name=original_name)
         self.run(commands, timeout=60, secrets=secrets)
         self.config.rename_account_options(original_name, profile.name)
         self.config.set_dhcp_for(profile.name, profile.dhcp_after_connect)
@@ -617,7 +642,8 @@ class SoftEtherBackend:
                     f"{parameter('LOADKEY', profile.private_key_path)}"
                 )
             elif creating:
-                raise ValueError("Certificate authentication requires both certificate and private key files.")
+                raise ValueError(
+                    "Certificate authentication requires both certificate and private key files.")
         elif profile.password:
             auth_kind = "radius" if profile.auth_type == "radius" else "standard"
             commands.append(
@@ -626,7 +652,8 @@ class SoftEtherBackend:
             )
             secrets.append(profile.password)
         elif creating:
-            raise ValueError("Password authentication requires a password when creating an account.")
+            raise ValueError(
+                "Password authentication requires a password when creating an account.")
 
         if creating or profile.change_proxy_settings:
             if profile.proxy_type == "http":
@@ -653,8 +680,10 @@ class SoftEtherBackend:
         commands.append(
             f"AccountServerCert{'Enable' if profile.verify_server_certificate else 'Disable'} {quote(current_name)}"
         )
-        commands.append(f"AccountEncrypt{'Enable' if profile.encrypt else 'Disable'} {quote(current_name)}")
-        commands.append(f"AccountCompress{'Enable' if profile.compress else 'Disable'} {quote(current_name)}")
+        commands.append(
+            f"AccountEncrypt{'Enable' if profile.encrypt else 'Disable'} {quote(current_name)}")
+        commands.append(
+            f"AccountCompress{'Enable' if profile.compress else 'Disable'} {quote(current_name)}")
         detail = (
             f"AccountDetailSet {quote(current_name)} "
             f"/MAXTCP:{profile.max_tcp} /INTERVAL:{profile.tcp_interval} /TTL:{profile.tcp_ttl} "
@@ -678,7 +707,8 @@ class SoftEtherBackend:
                 f"AccountStartup{'Set' if profile.startup else 'Remove'} {quote(current_name)}"
             )
         if not creating and profile.name != current_name:
-            commands.append(f"AccountRename {quote(current_name)} {parameter('NEW', profile.name)}")
+            commands.append(
+                f"AccountRename {quote(current_name)} {parameter('NEW', profile.name)}")
         return commands, tuple(secrets)
 
     def delete_account(self, account_name: str) -> None:
@@ -687,14 +717,16 @@ class SoftEtherBackend:
         save_config(self.config)
 
     def export_account(self, account_name: str, path: str) -> None:
-        self.run([f"AccountExport {quote(account_name)} {parameter('SAVEPATH', path)}"])
+        self.run(
+            [f"AccountExport {quote(account_name)} {parameter('SAVEPATH', path)}"])
 
     def import_account(self, path: str) -> None:
         self.run([f"AccountImport {quote(path)}"])
 
     def create_nic(self, name: str) -> None:
         if not re.fullmatch(r"[A-Za-z0-9_.-]{1,31}", name):
-            raise ValueError("Adapter names may contain letters, numbers, underscore, dot and hyphen (31 max).")
+            raise ValueError(
+                "Adapter names may contain letters, numbers, underscore, dot and hyphen (31 max).")
         self.run([f"NicCreate {quote(name)}"])
 
     def delete_nic(self, name: str) -> None:
@@ -707,10 +739,12 @@ class SoftEtherBackend:
         normalized = mac.replace("-", ":").upper()
         if not re.fullmatch(r"[0-9A-F]{2}(?::[0-9A-F]{2}){5}", normalized):
             raise ValueError("Enter a MAC address such as 00:AC:01:23:45:67.")
-        self.run([f"NicSetSetting {quote(name)} {parameter('MAC', normalized)}"])
+        self.run(
+            [f"NicSetSetting {quote(name)} {parameter('MAC', normalized)}"])
 
     def helper(self, action: str, *arguments: str, privileged: bool = True, timeout: int = 40) -> CommandResult:
-        del privileged  # Every helper operation uses the existing PolicyKit session.
+        # Every helper operation uses the existing PolicyKit session.
+        del privileged
         payload: dict[str, object] = {"action": action}
         if action in {"start-client", "stop-client", "status-client"}:
             payload.update(
@@ -729,10 +763,12 @@ class SoftEtherBackend:
         else:
             raise ValueError(f"Unknown helper action: {action}")
 
-        result = self._privileged_request(payload, timeout, (action, *arguments))
+        result = self._privileged_request(
+            payload, timeout, (action, *arguments))
         if not result.ok:
             raise VpncmdError(
-                result.stderr.strip() or result.output.strip() or f"Helper action {action} failed.",
+                result.stderr.strip() or result.output.strip(
+                ) or f"Helper action {action} failed.",
                 result,
             )
         return result
@@ -775,7 +811,8 @@ class SoftEtherBackend:
         if "running" in lowered:
             return "running"
         if not result.ok:
-            raise VpncmdError(text or "Unable to determine VPN Client service status.", result)
+            raise VpncmdError(
+                text or "Unable to determine VPN Client service status.", result)
 
         # A successful but unusually worded response should remain visible to
         # diagnostics rather than being guessed incorrectly.
@@ -799,4 +836,3 @@ class SoftEtherBackend:
 
     def repair_network(self) -> CommandResult:
         return self.helper("network-repair", timeout=60)
-

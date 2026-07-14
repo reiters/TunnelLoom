@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=SoftEther VPN Client Manager
+Name=TunnelLoom VPN Client Manager
 Comment=Graphical manager for the SoftEther VPN Client on Linux
-Exec=/usr/local/bin/softether-gui
-Icon=softether-gui
+Exec=/usr/local/bin/tunnelloom-gui
+Icon=tunnelloom-gui
 Terminal=false
 Categories=Network;System;
 StartupNotify=true
-Keywords=VPN;SoftEther;Network;
+Keywords=VPN;SoftEther;Network;TunnelLoom;

@@ -13,10 +13,11 @@ from .main_window import MainWindow
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("SoftEther VPN Client Manager")
-    app.setOrganizationName("SoftEther GUI Community")
+    app.setApplicationName("TunnelLoom VPN Client Manager")
+    app.setOrganizationName("TunnelLoom GUI Community")
     app.setQuitOnLastWindowClosed(False)
-    icon_path = Path(__file__).resolve().parent.parent / "assets" / "softether-gui.svg"
+    icon_path = Path(__file__).resolve().parent.parent / \
+        "assets" / "tunnelloom-gui.svg"
     icon = QIcon(str(icon_path))
     app.setWindowIcon(icon)
 

@@ -1,4 +1,4 @@
-from softether_gui.parser import parse_account_list, parse_account_profile, parse_nic_list
+from tunnelloom_gui.parser import parse_account_list, parse_account_profile, parse_nic_list
 
 
 ACCOUNT_LIST = """

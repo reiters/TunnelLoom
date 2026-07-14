@@ -1,10 +1,10 @@
 #!/bin/sh
 set -eu
 
-APP_ROOT=/opt/softether-gui
+APP_ROOT=/opt/tunnelloom-gui
 
-if [ ! -d "$APP_ROOT/softether_gui" ]; then
-    echo "SoftEther GUI is not installed correctly: $APP_ROOT/softether_gui is missing." >&2
+if [ ! -d "$APP_ROOT/tunnelloom_gui" ]; then
+    echo "TunnelLoom GUI is not installed correctly: $APP_ROOT/tunnelloom_gui is missing." >&2
     exit 1
 fi
 
@@ -27,11 +27,11 @@ case "${1:-}" in
         exit 0
         ;;
     --diagnose)
-        exec /usr/bin/python3 -P -m softether_gui.diagnostics
+        exec /usr/bin/python3 -P -m tunnelloom_gui.diagnostics
         ;;
     --probe-vpncmd)
-        exec /usr/bin/python3 -P -m softether_gui.probe
+        exec /usr/bin/python3 -P -m tunnelloom_gui.probe
         ;;
 esac
 
-exec /usr/bin/python3 -P -m softether_gui "$@"
+exec /usr/bin/python3 -P -m tunnelloom_gui "$@"

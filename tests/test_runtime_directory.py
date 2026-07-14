@@ -4,9 +4,9 @@ import os
 import subprocess
 from pathlib import Path
 
-from softether_gui.backend import SoftEtherBackend
-from softether_gui.config import detect_softether_dir
-from softether_gui.types import AppConfig, VirtualNic, VpnAccount
+from tunnelloom_gui.backend import SoftEtherBackend
+from tunnelloom_gui.config import detect_softether_dir
+from tunnelloom_gui.types import AppConfig, VirtualNic, VpnAccount
 
 
 def test_detect_softether_directory_from_executable(tmp_path: Path) -> None:
@@ -52,14 +52,15 @@ def test_vpncmd_request_uses_configured_softether_directory(tmp_path: Path, monk
     assert payload["vpncmd_path"] == str(vpncmd)
     assert payload["commands"] == ["AccountList"]
 
+
 def test_client_helper_arguments_preserve_empty_positions() -> None:
     backend = SoftEtherBackend(AppConfig(softether_dir="/usr/local/vpnclient"))
     assert backend._client_helper_args() == ["", "/usr/local/vpnclient"]
 
 
 def test_repair_stale_configured_directory(tmp_path: Path, monkeypatch) -> None:
-    from softether_gui import config as config_module
-    from softether_gui.config import repair_runtime_config
+    from tunnelloom_gui import config as config_module
+    from tunnelloom_gui.config import repair_runtime_config
 
     program_dir = tmp_path / "vpnclient"
     program_dir.mkdir()
@@ -69,7 +70,8 @@ def test_repair_stale_configured_directory(tmp_path: Path, monkeypatch) -> None:
         executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         executable.chmod(0o755)
 
-    monkeypatch.setattr(config_module, "COMMON_SOFTETHER_DIRS", (str(program_dir),))
+    monkeypatch.setattr(
+        config_module, "COMMON_SOFTETHER_DIRS", (str(program_dir),))
     monkeypatch.setattr(config_module, "DISCOVERY_ROOTS", ())
     app_config = AppConfig(
         softether_dir="/usr/local/bin",
@@ -84,7 +86,7 @@ def test_repair_stale_configured_directory(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_validate_repairs_stale_directory_before_running(tmp_path: Path, monkeypatch) -> None:
-    from softether_gui import config as config_module
+    from tunnelloom_gui import config as config_module
 
     program_dir = tmp_path / "vpnclient"
     program_dir.mkdir()
@@ -94,9 +96,11 @@ def test_validate_repairs_stale_directory_before_running(tmp_path: Path, monkeyp
         executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         executable.chmod(0o755)
 
-    monkeypatch.setattr(config_module, "COMMON_SOFTETHER_DIRS", (str(program_dir),))
+    monkeypatch.setattr(
+        config_module, "COMMON_SOFTETHER_DIRS", (str(program_dir),))
     monkeypatch.setattr(config_module, "DISCOVERY_ROOTS", ())
-    monkeypatch.setattr("softether_gui.backend.save_config", lambda _config: None)
+    monkeypatch.setattr(
+        "tunnelloom_gui.backend.save_config", lambda _config: None)
 
     app_config = AppConfig(
         softether_dir="/wrong/folder",
@@ -122,7 +126,8 @@ def _helper_request(helper: Path, request: dict[str, object]) -> dict[str, objec
     process.stdin.write(__import__("json").dumps(request) + "\n")
     process.stdin.flush()
     reply = __import__("json").loads(process.stdout.readline())
-    process.stdin.write(__import__("json").dumps({"id": 999, "action": "quit"}) + "\n")
+    process.stdin.write(__import__("json").dumps(
+        {"id": 999, "action": "quit"}) + "\n")
     process.stdin.flush()
     process.wait(timeout=5)
     return reply
@@ -130,7 +135,8 @@ def _helper_request(helper: Path, request: dict[str, object]) -> dict[str, objec
 
 def test_privileged_helper_executes_local_vpncmd_after_chdir(tmp_path: Path) -> None:
     if os.geteuid() != 0:
-        __import__("pytest").skip("privileged helper integration test requires root")
+        __import__("pytest").skip(
+            "privileged helper integration test requires root")
     program_dir = tmp_path / "vpnclient"
     program_dir.mkdir(mode=0o755)
     (program_dir / "hamcore.se2").write_bytes(b"test")
@@ -152,7 +158,8 @@ def test_privileged_helper_executes_local_vpncmd_after_chdir(tmp_path: Path) -> 
     vpnclient.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     vpnclient.chmod(0o755)
 
-    helper = Path(__file__).resolve().parents[1] / "scripts" / "softether-gui-helper"
+    helper = Path(__file__).resolve(
+    ).parents[1] / "scripts" / "tunnelloom-gui-helper"
     reply = _helper_request(
         helper,
         {
@@ -174,7 +181,8 @@ def test_privileged_helper_executes_local_vpncmd_after_chdir(tmp_path: Path) -> 
 
 def test_privileged_helper_executes_local_vpnclient_after_chdir(tmp_path: Path) -> None:
     if os.geteuid() != 0:
-        __import__("pytest").skip("privileged helper integration test requires root")
+        __import__("pytest").skip(
+            "privileged helper integration test requires root")
     program_dir = tmp_path / "vpnclient"
     program_dir.mkdir(mode=0o755)
     (program_dir / "hamcore.se2").write_bytes(b"test")
@@ -190,7 +198,8 @@ def test_privileged_helper_executes_local_vpnclient_after_chdir(tmp_path: Path) 
     )
     vpnclient.chmod(0o755)
 
-    helper = Path(__file__).resolve().parents[1] / "scripts" / "softether-gui-helper"
+    helper = Path(__file__).resolve(
+    ).parents[1] / "scripts" / "tunnelloom-gui-helper"
     reply = _helper_request(
         helper,
         {
@@ -208,14 +217,17 @@ def test_privileged_helper_executes_local_vpnclient_after_chdir(tmp_path: Path) 
     assert "argv0=./vpnclient" in trace_text
     assert "operation=status" in trace_text
 
+
 def test_load_state_queries_all_existing_accounts_and_nics(monkeypatch) -> None:
     backend = SoftEtherBackend(AppConfig())
     calls: list[str] = []
     accounts = [object()]
     nics = [object()]
 
-    monkeypatch.setattr(backend, "list_accounts", lambda: calls.append("AccountList") or accounts)
-    monkeypatch.setattr(backend, "list_nics", lambda: calls.append("NicList") or nics)
+    monkeypatch.setattr(backend, "list_accounts",
+                        lambda: calls.append("AccountList") or accounts)
+    monkeypatch.setattr(backend, "list_nics",
+                        lambda: calls.append("NicList") or nics)
 
     assert backend.load_state() == (accounts, nics)
     assert calls == ["AccountList", "NicList"]
@@ -227,14 +239,15 @@ def test_start_client_waits_then_loads_existing_state(monkeypatch) -> None:
     state = ([object()], [object()])
 
     monkeypatch.setattr(backend, "client_start", lambda: calls.append("start"))
-    monkeypatch.setattr(backend, "wait_for_state", lambda **_kwargs: calls.append("load") or state)
+    monkeypatch.setattr(backend, "wait_for_state", lambda **
+                        _kwargs: calls.append("load") or state)
 
     assert backend.client_start_and_load_state() == state
     assert calls == ["start", "load"]
 
 
 def test_wait_for_state_retries_until_vpncmd_is_ready(monkeypatch) -> None:
-    from softether_gui.backend import VpncmdError
+    from tunnelloom_gui.backend import VpncmdError
 
     backend = SoftEtherBackend(AppConfig())
     attempts = 0
@@ -248,7 +261,8 @@ def test_wait_for_state_retries_until_vpncmd_is_ready(monkeypatch) -> None:
         return expected
 
     monkeypatch.setattr(backend, "load_state", load_state)
-    monkeypatch.setattr("softether_gui.backend.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("tunnelloom_gui.backend.time.sleep",
+                        lambda _seconds: None)
 
     assert backend.wait_for_state(seconds=2, poll_interval=0) == expected
     assert attempts == 4
@@ -271,7 +285,7 @@ def test_validate_allows_root_only_hamcore(tmp_path: Path, monkeypatch) -> None:
             return False
         return real_access(path, mode)
 
-    monkeypatch.setattr("softether_gui.backend.os.access", fake_access)
+    monkeypatch.setattr("tunnelloom_gui.backend.os.access", fake_access)
     backend = SoftEtherBackend(
         AppConfig(
             softether_dir=str(program_dir),
@@ -283,9 +297,8 @@ def test_validate_allows_root_only_hamcore(tmp_path: Path, monkeypatch) -> None:
     backend.validate()
 
 
-
 def test_authorize_opens_privileged_helper_session(monkeypatch) -> None:
-    from softether_gui.types import CommandResult
+    from tunnelloom_gui.types import CommandResult
 
     backend = SoftEtherBackend(AppConfig())
     captured: dict[str, object] = {}
@@ -306,9 +319,12 @@ def test_authorize_opens_privileged_helper_session(monkeypatch) -> None:
 
 def test_privileged_helper_accepts_authorize_handshake() -> None:
     if os.geteuid() != 0:
-        __import__("pytest").skip("privileged helper integration test requires root")
-    helper = Path(__file__).resolve().parents[1] / "scripts" / "softether-gui-helper"
-    reply = _helper_request(helper, {"id": 3, "action": "authorize", "timeout": 5})
+        __import__("pytest").skip(
+            "privileged helper integration test requires root")
+    helper = Path(__file__).resolve(
+    ).parents[1] / "scripts" / "tunnelloom-gui-helper"
+    reply = _helper_request(
+        helper, {"id": 3, "action": "authorize", "timeout": 5})
 
     assert reply["returncode"] == 0
     assert reply["output"] == "authorized"
@@ -326,7 +342,8 @@ def test_wait_for_state_does_not_accept_transient_empty_restart_snapshot(monkeyp
     ]
 
     monkeypatch.setattr(backend, "load_state", lambda: snapshots.pop(0))
-    monkeypatch.setattr("softether_gui.backend.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("tunnelloom_gui.backend.time.sleep",
+                        lambda _seconds: None)
 
     state = backend.wait_for_state(
         seconds=5,
@@ -346,6 +363,7 @@ def test_wait_for_state_accepts_two_stable_snapshots_without_prior_names(monkeyp
     snapshots = [expected, expected]
 
     monkeypatch.setattr(backend, "load_state", lambda: snapshots.pop(0))
-    monkeypatch.setattr("softether_gui.backend.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("tunnelloom_gui.backend.time.sleep",
+                        lambda _seconds: None)
 
     assert backend.wait_for_state(seconds=5, poll_interval=0) == expected

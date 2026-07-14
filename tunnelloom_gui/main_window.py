@@ -68,7 +68,7 @@ class MainWindow(QMainWindow):
         self._really_quit = False
         self._service_prompted = False
         self._service_running: bool | None = None
-        self.setWindowTitle("SoftEther VPN Client Manager")
+        self.setWindowTitle("TunnelLoom VPN Client Manager")
         self.setWindowIcon(icon)
         self.resize(1080, 600)
         self._create_actions()
@@ -86,23 +86,34 @@ class MainWindow(QMainWindow):
 
     def _create_actions(self) -> None:
         style = self.style()
-        self.add_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder), "New VPN Connection Setting…", self)
-        self.edit_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView), "Properties…", self)
-        self.delete_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_TrashIcon), "Delete", self)
-        self.connect_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay), "Connect", self)
-        self.disconnect_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_MediaStop), "Disconnect", self)
-        self.status_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation), "View Status…", self)
-        self.refresh_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload), "Refresh", self)
+        self.add_action = QAction(style.standardIcon(
+            QStyle.StandardPixmap.SP_FileDialogNewFolder), "New VPN Connection Setting…", self)
+        self.edit_action = QAction(style.standardIcon(
+            QStyle.StandardPixmap.SP_FileDialogDetailedView), "Properties…", self)
+        self.delete_action = QAction(style.standardIcon(
+            QStyle.StandardPixmap.SP_TrashIcon), "Delete", self)
+        self.connect_action = QAction(style.standardIcon(
+            QStyle.StandardPixmap.SP_MediaPlay), "Connect", self)
+        self.disconnect_action = QAction(style.standardIcon(
+            QStyle.StandardPixmap.SP_MediaStop), "Disconnect", self)
+        self.status_action = QAction(style.standardIcon(
+            QStyle.StandardPixmap.SP_MessageBoxInformation), "View Status…", self)
+        self.refresh_action = QAction(style.standardIcon(
+            QStyle.StandardPixmap.SP_BrowserReload), "Refresh", self)
         self.import_action = QAction("Import VPN Connection Setting…", self)
         self.export_action = QAction("Export VPN Connection Setting…", self)
         self.new_nic_action = QAction("Create Virtual Network Adapter…", self)
-        self.delete_nic_action = QAction("Delete Virtual Network Adapter", self)
-        self.enable_nic_action = QAction("Enable Virtual Network Adapter", self)
-        self.disable_nic_action = QAction("Disable Virtual Network Adapter", self)
+        self.delete_nic_action = QAction(
+            "Delete Virtual Network Adapter", self)
+        self.enable_nic_action = QAction(
+            "Enable Virtual Network Adapter", self)
+        self.disable_nic_action = QAction(
+            "Disable Virtual Network Adapter", self)
         self.mac_nic_action = QAction("Set MAC Address…", self)
         self.start_service_action = QAction("Start VPN Client Service", self)
         self.stop_service_action = QAction("Stop VPN Client Service", self)
-        self.network_repair_action = QAction("Repair Normal Network After VPN", self)
+        self.network_repair_action = QAction(
+            "Repair Normal Network After VPN", self)
         self.network_diagnostics_action = QAction("Network Diagnostics…", self)
         self.preferences_action = QAction("Preferences…", self)
         self.about_action = QAction("About", self)
@@ -120,7 +131,8 @@ class MainWindow(QMainWindow):
         self.new_nic_action.triggered.connect(self.create_nic)
         self.delete_nic_action.triggered.connect(self.delete_nic)
         self.enable_nic_action.triggered.connect(lambda: self.enable_nic(True))
-        self.disable_nic_action.triggered.connect(lambda: self.enable_nic(False))
+        self.disable_nic_action.triggered.connect(
+            lambda: self.enable_nic(False))
         self.mac_nic_action.triggered.connect(self.set_nic_mac)
         self.start_service_action.triggered.connect(self.start_client_service)
         self.stop_service_action.triggered.connect(
@@ -131,8 +143,10 @@ class MainWindow(QMainWindow):
                 offer_start_service=False,
             )
         )
-        self.network_repair_action.triggered.connect(self.repair_normal_network)
-        self.network_diagnostics_action.triggered.connect(self.show_network_diagnostics)
+        self.network_repair_action.triggered.connect(
+            self.repair_normal_network)
+        self.network_diagnostics_action.triggered.connect(
+            self.show_network_diagnostics)
         self.preferences_action.triggered.connect(self.preferences)
         self.about_action.triggered.connect(self.about)
         self.quit_action.triggered.connect(self.really_quit)
@@ -204,26 +218,36 @@ class MainWindow(QMainWindow):
             ]
         )
         self.account_table.verticalHeader().hide()
-        self.account_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.account_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.account_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.account_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        self.account_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection)
+        self.account_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers)
         self.account_table.horizontalHeader().setStretchLastSection(True)
         self.account_table.itemSelectionChanged.connect(self._update_actions)
         self.account_table.itemClicked.connect(self._account_cell_clicked)
-        self.account_table.itemDoubleClicked.connect(lambda _item: self._account_double_click())
+        self.account_table.itemDoubleClicked.connect(
+            lambda _item: self._account_double_click())
         self.account_table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.account_table.customContextMenuRequested.connect(self._account_context_menu)
+        self.account_table.customContextMenuRequested.connect(
+            self._account_context_menu)
 
         self.nic_table = QTableWidget(0, 4)
-        self.nic_table.setHorizontalHeaderLabels(["Virtual Network Adapter Name", "Status", "MAC Address", "Version"])
+        self.nic_table.setHorizontalHeaderLabels(
+            ["Virtual Network Adapter Name", "Status", "MAC Address", "Version"])
         self.nic_table.verticalHeader().hide()
-        self.nic_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.nic_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.nic_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.nic_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        self.nic_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection)
+        self.nic_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers)
         self.nic_table.horizontalHeader().setStretchLastSection(True)
         self.nic_table.itemSelectionChanged.connect(self._update_actions)
         self.nic_table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.nic_table.customContextMenuRequested.connect(self._nic_context_menu)
+        self.nic_table.customContextMenuRequested.connect(
+            self._nic_context_menu)
 
         splitter = QSplitter(Qt.Vertical)
         splitter.addWidget(self.account_table)
@@ -237,7 +261,7 @@ class MainWindow(QMainWindow):
 
     def _create_tray(self, icon: QIcon) -> None:
         self.tray = QSystemTrayIcon(icon, self)
-        self.tray.setToolTip("SoftEther VPN Client Manager")
+        self.tray.setToolTip("TunnelLoom VPN Client Manager")
         self.tray_menu = QMenu()
         self.tray_connections = self.tray_menu.addMenu("VPN Connections")
         self.tray_menu.addSeparator()
@@ -404,7 +428,7 @@ class MainWindow(QMainWindow):
     def _show_exception(self, exc: Exception) -> None:
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Critical)
-        box.setWindowTitle("SoftEther VPN Client Manager")
+        box.setWindowTitle("TunnelLoom VPN Client Manager")
         box.setText(str(exc))
         if isinstance(exc, VpncmdError) and exc.result:
             detail = (exc.result.output + "\n" + exc.result.stderr).strip()
@@ -473,7 +497,8 @@ class MainWindow(QMainWindow):
         selected_nic = self.selected_nic().name if self.selected_nic() else ""
         self.accounts = accounts
         self.nics = nics
-        self._last_known_account_names = frozenset(item.name for item in accounts)
+        self._last_known_account_names = frozenset(
+            item.name for item in accounts)
         self._last_known_nic_names = frozenset(item.name for item in nics)
         self.account_table.setRowCount(len(accounts))
         for row, account in enumerate(accounts):
@@ -507,7 +532,8 @@ class MainWindow(QMainWindow):
         self._rebuild_tray_connections()
         self._update_actions()
         connected = sum(1 for item in accounts if item.is_connected)
-        self.statusBar().showMessage(f"{len(accounts)} connection settings, {connected} connected, {len(nics)} virtual adapters", 5000)
+        self.statusBar().showMessage(
+            f"{len(accounts)} connection settings, {connected} connected, {len(nics)} virtual adapters", 5000)
 
     @Slot(object)
     def _account_cell_clicked(self, item: QTableWidgetItem) -> None:
@@ -517,7 +543,8 @@ class MainWindow(QMainWindow):
         if not address or address == "—":
             return
         QApplication.clipboard().setText(address)
-        self.statusBar().showMessage(f"Copied VPN IP address {address} to the clipboard", 4000)
+        self.statusBar().showMessage(
+            f"Copied VPN IP address {address} to the clipboard", 4000)
 
     def selected_account(self) -> VpnAccount | None:
         row = self.account_table.currentRow()
@@ -548,22 +575,29 @@ class MainWindow(QMainWindow):
         self.add_action.setEnabled(running)
         self.import_action.setEnabled(running)
         self.new_nic_action.setEnabled(running)
-        self.edit_action.setEnabled(running and account is not None and not account.is_active)
+        self.edit_action.setEnabled(
+            running and account is not None and not account.is_active)
         self.delete_action.setEnabled(running and account is not None)
-        self.connect_action.setEnabled(running and account is not None and not account.is_active)
-        self.disconnect_action.setEnabled(running and account is not None and account.is_active)
-        self.status_action.setEnabled(running and account is not None and account.is_active)
+        self.connect_action.setEnabled(
+            running and account is not None and not account.is_active)
+        self.disconnect_action.setEnabled(
+            running and account is not None and account.is_active)
+        self.status_action.setEnabled(
+            running and account is not None and account.is_active)
         self.export_action.setEnabled(running and account is not None)
         self.delete_nic_action.setEnabled(running and nic is not None)
-        self.enable_nic_action.setEnabled(running and nic is not None and nic.status.casefold() != "enabled")
-        self.disable_nic_action.setEnabled(running and nic is not None and nic.status.casefold() == "enabled")
+        self.enable_nic_action.setEnabled(
+            running and nic is not None and nic.status.casefold() != "enabled")
+        self.disable_nic_action.setEnabled(
+            running and nic is not None and nic.status.casefold() == "enabled")
         self.mac_nic_action.setEnabled(running and nic is not None)
 
     def add_account(self) -> None:
         dialog = AccountDialog(self.nics, parent=self)
         if dialog.exec():
             profile = dialog.profile()
-            self.run_task(partial(self.backend.create_account, profile), "Creating VPN connection setting…", lambda _r: self.refresh())
+            self.run_task(partial(self.backend.create_account, profile),
+                          "Creating VPN connection setting…", lambda _r: self.refresh())
 
     def edit_account(self) -> None:
         account = self.selected_account()
@@ -575,12 +609,14 @@ class MainWindow(QMainWindow):
             if dialog.exec():
                 updated = dialog.profile()
                 self.run_task(
-                    partial(self.backend.update_account, account.name, updated),
+                    partial(self.backend.update_account,
+                            account.name, updated),
                     "Saving VPN connection setting…",
                     lambda _r: self.refresh(),
                 )
 
-        self.run_task(partial(self.backend.get_profile, account.name), "Loading connection properties…", loaded)
+        self.run_task(partial(self.backend.get_profile, account.name),
+                      "Loading connection properties…", loaded)
 
     def delete_account(self) -> None:
         account = self.selected_account()
@@ -592,7 +628,8 @@ class MainWindow(QMainWindow):
             f'Delete the VPN connection setting "{account.name}"?',
         )
         if answer == QMessageBox.Yes:
-            self.run_task(partial(self.backend.delete_account, account.name), "Deleting connection setting…", lambda _r: self.refresh_allowing_empty())
+            self.run_task(partial(self.backend.delete_account, account.name),
+                          "Deleting connection setting…", lambda _r: self.refresh_allowing_empty())
 
     def connect_account(self) -> None:
         account = self.selected_account()
@@ -607,7 +644,8 @@ class MainWindow(QMainWindow):
     def disconnect_account(self) -> None:
         account = self.selected_account()
         if account:
-            self.run_task(partial(self.backend.disconnect, account), f'Disconnecting "{account.name}"…', lambda _r: self.refresh())
+            self.run_task(partial(self.backend.disconnect, account),
+                          f'Disconnecting "{account.name}"…', lambda _r: self.refresh())
 
     def _client_service_stopped(self, _result: Any) -> None:
         # The stopped service cannot answer AccountList or NicList. Clear the
@@ -651,31 +689,39 @@ class MainWindow(QMainWindow):
         account = self.selected_account()
         if not account:
             return
-        path, _ = QFileDialog.getSaveFileName(self, "Export VPN Connection Setting", f"{account.name}.vpn", "VPN files (*.vpn);;All files (*)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export VPN Connection Setting", f"{account.name}.vpn", "VPN files (*.vpn);;All files (*)")
         if path:
-            self.run_task(partial(self.backend.export_account, account.name, path), "Exporting connection setting…")
+            self.run_task(partial(self.backend.export_account,
+                          account.name, path), "Exporting connection setting…")
 
     def import_account(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Import VPN Connection Setting", "", "VPN files (*.vpn);;All files (*)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import VPN Connection Setting", "", "VPN files (*.vpn);;All files (*)")
         if path:
-            self.run_task(partial(self.backend.import_account, path), "Importing connection setting…", lambda _r: self.refresh())
+            self.run_task(partial(self.backend.import_account, path),
+                          "Importing connection setting…", lambda _r: self.refresh())
 
     def create_nic(self) -> None:
-        name, ok = QInputDialog.getText(self, "Create New Virtual Network Adapter", "Virtual Network Adapter Name:")
+        name, ok = QInputDialog.getText(
+            self, "Create New Virtual Network Adapter", "Virtual Network Adapter Name:")
         if ok and name.strip():
-            self.run_task(partial(self.backend.create_nic, name.strip()), "Creating virtual network adapter…", lambda _r: self.refresh())
+            self.run_task(partial(self.backend.create_nic, name.strip(
+            )), "Creating virtual network adapter…", lambda _r: self.refresh())
 
     def delete_nic(self) -> None:
         nic = self.selected_nic()
         if not nic:
             return
         if QMessageBox.question(self, "Delete Virtual Network Adapter", f'Delete virtual adapter "{nic.name}"?') == QMessageBox.Yes:
-            self.run_task(partial(self.backend.delete_nic, nic.name), "Deleting virtual network adapter…", lambda _r: self.refresh_allowing_empty())
+            self.run_task(partial(self.backend.delete_nic, nic.name),
+                          "Deleting virtual network adapter…", lambda _r: self.refresh_allowing_empty())
 
     def enable_nic(self, enabled: bool) -> None:
         nic = self.selected_nic()
         if nic:
-            self.run_task(partial(self.backend.enable_nic, nic.name, enabled), "Updating virtual network adapter…", lambda _r: self.refresh())
+            self.run_task(partial(self.backend.enable_nic, nic.name, enabled),
+                          "Updating virtual network adapter…", lambda _r: self.refresh())
 
     def set_nic_mac(self) -> None:
         nic = self.selected_nic()
@@ -683,10 +729,13 @@ class MainWindow(QMainWindow):
             return
         current = nic.mac
         if len(current) == 12 and ":" not in current:
-            current = ":".join(current[index:index + 2] for index in range(0, 12, 2))
-        value, ok = QInputDialog.getText(self, "Virtual Network Adapter MAC Address", "MAC address:", text=current)
+            current = ":".join(current[index:index + 2]
+                               for index in range(0, 12, 2))
+        value, ok = QInputDialog.getText(
+            self, "Virtual Network Adapter MAC Address", "MAC address:", text=current)
         if ok and value.strip():
-            self.run_task(partial(self.backend.set_nic_mac, nic.name, value.strip()), "Changing MAC address…", lambda _r: self.refresh())
+            self.run_task(partial(self.backend.set_nic_mac, nic.name, value.strip(
+            )), "Changing MAC address…", lambda _r: self.refresh())
 
     def repair_normal_network(self) -> None:
         if any(account.is_active for account in self.accounts):
@@ -707,8 +756,10 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Information)
         box.setWindowTitle("Normal Network Repair")
-        box.setText("Normal routes and DNS were checked and repaired where necessary.")
-        detail = (getattr(result, "output", "") + "\n" + getattr(result, "stderr", "")).strip()
+        box.setText(
+            "Normal routes and DNS were checked and repaired where necessary.")
+        detail = (getattr(result, "output", "") + "\n" +
+                  getattr(result, "stderr", "")).strip()
         if detail:
             box.setDetailedText(detail)
         box.exec()
@@ -725,8 +776,10 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Information)
         box.setWindowTitle("Network Diagnostics")
-        box.setText("Current routes, interfaces, NetworkManager state, and resolver configuration are shown below.")
-        detail = (getattr(result, "output", "") + "\n" + getattr(result, "stderr", "")).strip()
+        box.setText(
+            "Current routes, interfaces, NetworkManager state, and resolver configuration are shown below.")
+        detail = (getattr(result, "output", "") + "\n" +
+                  getattr(result, "stderr", "")).strip()
         box.setDetailedText(detail or "No diagnostic output was returned.")
         box.exec()
 
@@ -740,8 +793,8 @@ class MainWindow(QMainWindow):
     def about(self) -> None:
         QMessageBox.about(
             self,
-            "About SoftEther VPN Client Manager",
-            f"<b>SoftEther VPN Client Manager for Linux {__version__}</b><br><br>"
+            "About TunnelLoom VPN Client Manager",
+            f"<b>TunnelLoom VPN Client Manager for Linux {__version__}</b><br><br>"
             "An unofficial PySide6 desktop interface for the SoftEther VPN Client service and vpncmd. "
             "It is not affiliated with the SoftEther Project.<br><br>"
             "The interface uses SoftEther's documented VPN Client management commands and adds Linux DHCP integration.",
@@ -784,20 +837,26 @@ class MainWindow(QMainWindow):
             empty.setEnabled(False)
             return
         for account in self.accounts:
-            submenu = self.tray_connections.addMenu(f"{account.name} — {account.status}")
+            submenu = self.tray_connections.addMenu(
+                f"{account.name} — {account.status}")
             connect = submenu.addAction("Connect")
             disconnect = submenu.addAction("Disconnect")
             connect.setEnabled(not account.is_active)
             disconnect.setEnabled(account.is_active)
-            connect.triggered.connect(partial(self._tray_connect, account.name, True))
-            disconnect.triggered.connect(partial(self._tray_connect, account.name, False))
+            connect.triggered.connect(
+                partial(self._tray_connect, account.name, True))
+            disconnect.triggered.connect(
+                partial(self._tray_connect, account.name, False))
 
     def _tray_connect(self, account_name: str, connect: bool) -> None:
-        account = next((item for item in self.accounts if item.name == account_name), None)
+        account = next(
+            (item for item in self.accounts if item.name == account_name), None)
         if not account:
             return
-        function = partial(self.backend.connect if connect else self.backend.disconnect, account)
-        self.run_task(function, ("Connecting " if connect else "Disconnecting ") + account_name, lambda _r: self.refresh())
+        function = partial(
+            self.backend.connect if connect else self.backend.disconnect, account)
+        self.run_task(function, ("Connecting " if connect else "Disconnecting ") +
+                      account_name, lambda _r: self.refresh())
 
     def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason in {QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick}:
@@ -813,7 +872,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             self.hide()
             self.tray.showMessage(
-                "SoftEther VPN Client Manager",
+                "TunnelLoom VPN Client Manager",
                 "The manager is still running in the notification area.",
                 QSystemTrayIcon.MessageIcon.Information,
                 2500,
