@@ -4,6 +4,8 @@
 
 This was written 100% using ChatGPT.  I have no idea what I am doing.  I was tired of using the CLI to connect to the work VPN.  This tampers with network routing.  Works for me but could trash your network.  Use at your own risk!
 
+Send me an email if this helped you out tunnelloom@gmail.com
+
 ## Trademark notice
 
 TunnelLoom is an independent, unofficial project and is not affiliated with,
