@@ -123,7 +123,7 @@ It then installs the application under:
 and creates the launcher:
 
 ```text
-/usr/local/bin/softether-gui
+/usr/local/bin/tunnelloom-gui
 ```
 
 ## Starting the application
@@ -131,7 +131,7 @@ and creates the launcher:
 Launch it from the desktop application menu or run:
 
 ```bash
-softether-gui
+tunnelloom-gui
 ```
 
 The PolicyKit administrator-password prompt appears before the manager window. The GUI then queries SoftEther for existing accounts and adapters.
@@ -143,19 +143,19 @@ The application can be started from any working directory.
 Confirm the installed version:
 
 ```bash
-softether-gui --version
+tunnelloom-gui --version
 ```
 
 Display installation and SoftEther path diagnostics:
 
 ```bash
-softether-gui --diagnose
+tunnelloom-gui --diagnose
 ```
 
 Test the same `vpncmd` launch path used by the GUI:
 
 ```bash
-softether-gui --probe-vpncmd
+tunnelloom-gui --probe-vpncmd
 ```
 
 Sensitive passwords are not intentionally included in diagnostic output, but review all output before posting it publicly.
@@ -167,7 +167,7 @@ The application searches common locations automatically, including:
 ```text
 /usr/local/vpnclient
 /opt/vpnclient
-/opt/softether-vpnclient
+/opt/tunnelloom-vpnclient
 /usr/lib/softether
 ~/vpnclient
 ```
@@ -227,7 +227,7 @@ Transient empty SoftEther responses do not intentionally erase rows already disp
 The GUI itself runs as the desktop user. Root-required operations are handled by a PolicyKit-authorized helper installed at:
 
 ```text
-/usr/libexec/softether-gui-helper
+/usr/libexec/tunnelloom-gui-helper
 ```
 
 The helper:
@@ -276,7 +276,7 @@ From the source directory:
 Per-user preferences are retained at:
 
 ```text
-~/.config/softether-gui/config.json
+~/.config/tunnelloom-gui/config.json
 ```
 
 Remove that file manually to reset all GUI preferences.
@@ -288,9 +288,9 @@ When opening an issue, include:
 - Linux distribution and version
 - Desktop environment
 - SoftEther VPN Client version and installation path
-- GUI version from `softether-gui --version`
+- GUI version from `tunnelloom-gui --version`
 - The exact sequence of actions that caused the problem
-- Relevant output from `softether-gui --diagnose`
+- Relevant output from `tunnelloom-gui --diagnose`
 - Network Diagnostics output when the problem involves routes, DHCP, or DNS
 
 Remove server names, usernames, addresses, certificates, and other private information before posting.
