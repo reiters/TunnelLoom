@@ -7,7 +7,7 @@ This was written 100% by ChatGPT.  Use at your own risk.
 
 An unofficial graphical manager for the **SoftEther VPN Client on Linux**. It is designed to provide a workflow similar to the Windows SoftEther VPN Client Manager without requiring users to operate `vpncmd` directly.
 
-![SoftEther VPN Client Manager main window](docs/softether-vpn-client-manager.png)
+![SoftEther VPN Client Manager main window](docs/main_screen.png)
 
 ## Project status
 
