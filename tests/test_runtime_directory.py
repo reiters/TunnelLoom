@@ -39,7 +39,7 @@ def test_vpncmd_request_uses_configured_softether_directory(tmp_path: Path, monk
     def fake_request(payload, timeout, commands=()):
         captured["payload"] = payload
         captured["timeout"] = timeout
-        return __import__("softether_gui.types", fromlist=["CommandResult"]).CommandResult(
+        return __import__("tunneloom_gui.types", fromlist=["CommandResult"]).CommandResult(
             0, "Command completed successfully.\n", "", commands
         )
 
